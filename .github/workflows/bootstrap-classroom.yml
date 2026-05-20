@@ -1,0 +1,60 @@
+name: Bootstrap repo issues
+
+on:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          while IFS=$'\t' read -r name color description
+          do
+            gh label create "$name" \
+              --color "$color" \
+              --description "$description" \
+              || true
+          done < .github/classroom/labels.tsv
+
+      - name: Create starter issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for file in .github/classroom/issues/*.md
+          do
+            [ -e "$file" ] || continue
+
+            title=$(grep '^# ' "$file" | head -n1 | sed 's/^# //')
+
+            labels=$(sed -n 's/^labels: \[\(.*\)\]/\1/p' "$file")
+
+            body=$(sed '1,/^---$/d' "$file" | sed '1,/^---$/d')
+
+            if gh issue list --state all --search "$title in:title" --json title -q '.[].title' | grep -Fxq "$title"
+            then
+              echo "Issue already exists: $title"
+              continue
+            fi
+
+            if [ -n "$labels" ]
+            then
+              gh issue create \
+                --title "$title" \
+                --body "$body" \
+                --label "$labels"
+            else
+              gh issue create \
+                --title "$title" \
+                --body "$body"
+            fi
+          done
